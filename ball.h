@@ -59,21 +59,91 @@ public:
 			pr = b.right() + radius;
 			if (inside(locX, locY, pt, pb, pl, pr))
 			{
-				// there are 4 cases
+				// <Ball-Paddle Collision Code> 
+				
+				// Which case has the smallest penetration? (resolve 
+				// using that one, so that we bounce correctly when running 
+				// into a corner of the box head-on. Not an entirely correct
+				// method, but a good heuristic in non-extreme cases where the
+				// ball's velocity is small comared to the size of the box.
+				// Ideally we would check whether the ball's path crossed over 
+				// the diagonal of that corner of the box inside, or outside
+				// the box, or not at all, to determine which of the faces it
+				// trully collided with)
+				int smallestPenetrationCase = 0;
+				float smallestPenetrationDistance = 10000.0f;
+
 				// case 1: the ball is initially above the paddle and is going down
+				if (lastY > pt && vY < 0) {
+					float dist = (pt - locY);
+					smallestPenetrationDistance = dist;
+					smallestPenetrationCase = 1;
+				}
+
 				// case 2: the ball is initially below the paddle and is going up
+				if (lastY < pb && vY > 0) {
+					float dist = (locY - pb);
+					if (dist < smallestPenetrationDistance) {
+						smallestPenetrationDistance = dist;
+						smallestPenetrationCase = 2;
+					}
+				}
+
 				// case 3: the case is initially to the left of the paddle and is going right
+				if (lastX > pr && vX < 0) {
+					float dist = (locX - pr);
+					if (dist < smallestPenetrationDistance) {
+						smallestPenetrationDistance = dist;
+						smallestPenetrationCase = 3;
+					}
+				}
+
 				// case 4: the ball is initially to the right of the paddle and is going left
-				// Add code below
+				if (lastX < pl && vX > 0) {
+					float dist = (pl - locX);
+					if (dist < smallestPenetrationDistance) {
+						smallestPenetrationDistance = dist;
+						smallestPenetrationCase = 4;
+					}
+				}
 
+				// Case handling now that we know which case to resolve
+				float penetrationFrac;
+				switch (smallestPenetrationCase) {
+				case 1:
+				case 2:
+					penetrationFrac = smallestPenetrationDistance / vY;
+					locX -= penetrationFrac*vX;
+					locY -= penetrationFrac*vY;
+					vY = -vY;
+					locX += penetrationFrac*vX;
+					locY += penetrationFrac*vY;
+					break;
 
+				case 3: 
+				case 4:
+					penetrationFrac = smallestPenetrationDistance / vX;
+					locX -= penetrationFrac*vX;
+					locY -= penetrationFrac*vY;
+					vX = -vX;
+					locX += penetrationFrac*vX;
+					locY += penetrationFrac*vY;
+					break;
 
+				default:
+					break; // Nothing to do
+				}
 
-
-
-
-
-				// add code above
+				// Add to the score if the collision was handled
+				// NOTE: Velocity direction test + reflected velocity will
+				// ensure that we never double-count a paddle hit, since even
+				// if the position is just touching after resolving the
+				// collision, the reflected velocity will mean we never enter
+				// any of the cases that next iteration, and we won't 
+				// score a second time.
+				if (smallestPenetrationCase != 0) {
+					++*score;
+				}
 			}
 		}
 		else { // box
@@ -82,21 +152,78 @@ public:
 			pl = b.left() + radius;
 			pr = b.right() - radius;
 			if (!inside(locX, locY, pt, pb, pl, pr)) {
+				// <Ball-Wall Collision Code>
+
+				// In case any edge penetrates, we need to go back and check the 
+				// other ones again, since fixing one penetration may induce 
+				// one further one when the ball bounces near the corners.
+				// NOTE: It does not matter which order we resolve the
+				// penetrations in when there are multiple ones, we will get
+				// the same, correct, result regardless of the order. We simply
+				// need to cover each one once. Given that each case checks
+				// for both collision *and* velocity direction, and goes on to
+				// reflect the velocity direction, each can only be done once.
+			penetrationCases:
+
 				// there are 4 cases
 				// case 1: the ball is initially above the bottom wall and is going down
+				if (locY < pb && vY < 0) {
+					// In each case, first find the fraction of the velocity
+					// by which the ball penetrated into the wall.
+					float penetrationFrac = (pb - locY)/vY;
+
+					// Then rewind the movement by that much.
+					locX -= penetrationFrac*vX;
+					locY -= penetrationFrac*vY;
+
+					// Apply the collision "bounce" to the velocity
+					vY = -vY;
+
+					// Move the ball along the (now) correct path using the
+					// remaining velocity.
+					locX += (1-penetrationFrac)*vX;
+					locY += (1-penetrationFrac)*vY;
+
+					// Also update the score in the case of hitting the bottom
+					// wall. (The user loses a point)
+					--*score;
+
+					// Finally, retest all of the cases for further collisions.
+					goto penetrationCases;
+				}
+
 				// case 2: the ball is initially below the top wall and is going up
+				if (locY > pt && vY > 0) {
+					float penetrationFrac = (locY - pt)/vY;
+					locX -= penetrationFrac*vX;
+					locY -= penetrationFrac*vY;
+					vY = -vY;
+					locX += (1-penetrationFrac)*vX;
+					locY += (1-penetrationFrac)*vY;
+					goto penetrationCases;
+				}
+
 				// case 3: the case is initially to the left of the right wall and is going right
+				if (locX > pr && vX > 0) {
+					float penetrationFrac = (locX - pr)/vX;
+					locX -= penetrationFrac*vX;
+					locY -= penetrationFrac*vY;
+					vX = -vX;
+					locX += (1-penetrationFrac)*vX;
+					locY += (1-penetrationFrac)*vY;
+					goto penetrationCases;
+				}
+
 				// case 4: the ball is initially to the right of the left wall and is going left
-				// Add code below
-
-
-
-
-
-
-
-
-				// add code above
+				if (locX < pl && vX < 0) {
+					float penetrationFrac = (pl - locX)/vX;
+					locX -= penetrationFrac*vX;
+					locY -= penetrationFrac*vY;
+					vX = -vX;
+					locX += (1-penetrationFrac)*vX;
+					locY += (1-penetrationFrac)*vY;					
+					goto penetrationCases;
+				}
 			}
 		}
 	}
